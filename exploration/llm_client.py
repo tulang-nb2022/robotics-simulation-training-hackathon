@@ -10,13 +10,13 @@ Configuration (all via environment variables):
 
 - NEBIUS_LLM_ENDPOINT:
     Full HTTPS URL for the Nemotron model endpoint.
-- NEBIUS_TOKEN:
+- NEBIUS_API_KEY:
     Bearer token obtained from Nebius Token Factory.
 
 The expected API shape is:
 
   POST $NEBIUS_LLM_ENDPOINT
-  Authorization: Bearer $NEBIUS_TOKEN
+  Authorization: Bearer $NEBIUS_API_KEY
   Content-Type: application/json
 
   {
@@ -37,6 +37,9 @@ import os
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
+import os
+from openai import OpenAI
+
 import requests
 
 
@@ -51,38 +54,34 @@ def _call_raw(system_prompt: str, user_prompt: str) -> Optional[str]:
     endpoint = os.environ.get("NEBIUS_LLM_ENDPOINT")
     token = os.environ.get("NEBIUS_TOKEN")
 
+
+    client = OpenAI(
+        base_url="https://api.tokenfactory.nebius.com/v1/",
+        api_key=os.environ.get("NEBIUS_API_KEY"),
+        )
+
     if not endpoint or not token:
         return None
 
-    payload: Dict[str, Any] = {
-        "model": "Nemotron-3-Super-120b-a12b",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.1,
-    }
-
     try:
-        resp = requests.post(
-            endpoint,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-            },
-            data=json.dumps(payload),
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        completion = client.chat.completions.create(
+            model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+            messages=[
+                    {
+                        "role": "system",
+                        "content": system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": user_prompt
+                    }
+                ],
+                temperature=0.6
+            )
     except Exception:
         return None
 
-    # Adjust this to match your actual API response shape
-    try:
-        return data["choices"][0]["message"]["content"]
-    except Exception:
-        return None
+    return completion.choices[0].message.content
 
 
 def params_from_llm(prompt: str) -> Optional[LLMExplorationConfig]:

@@ -1,5 +1,7 @@
 # robotics-simulation-training-hackathon
 
+Goal: Provide more exploration patterns (option space) for reinforcement learning
+
 "Prompt-controlled exploration agent"
 
 ## Simple Architecture
@@ -29,15 +31,50 @@ Agent just moves up, down, left, right.
 ## Implementation example
 if "cautious" in prompt:
     noise = 0.05
+
 elif "random" in prompt:
     noise = 0.3
+
 elif "aggressive" in prompt:
     noise = 0.6
+
 elif "strange" in prompt:
     exploration_bonus = 2.0
 
 ## Output
 Watch exploration patterns change
+
+---
+
+## Workflow summary (for a non-technical audience)
+
+This section describes what the project does from start to finish, using the real file and function names so you can follow along in the code.
+
+**1. You choose how to run the robot.**  
+You run one of two entry points:
+
+- **Scripted mode:** the program `exploration/train_all.py` is run (its `main()` function). It loops over four fixed “modes”: cautious, random, aggressive, and strange.
+- **RL mode:** the program `exploration/rl_train.py` is run (its `main()` function). Same four modes, but the robot “learns” via a simple Q-learning loop before drawing its path.
+
+**2. For each mode, the system decides how the robot should behave.**  
+The file `exploration/prompt_mapping.py` contains the function `params_from_prompt(prompt)`. It turns a word like “cautious” or “strange” into three numbers that control movement:
+
+- **Action noise** – how often the robot does a random step instead of a planned one.
+- **Step size** – how far it moves in one step.
+- **Curiosity weight** – how strongly it prefers visiting places it hasn’t been.
+
+If the “LLM switch” is on (the `USE_LLM` setting in your `.env` or environment), that function first asks the cloud-based Nemotron model (via `exploration/llm_client.py`, function `params_from_llm()`) to choose those three numbers. If the switch is off or the call fails, it uses built-in rules in `prompt_mapping.py` (the “keyword mapping”) for cautious, random, aggressive, and strange.
+
+**3. The robot moves on a grid.**  
+The file `exploration/env.py` defines a `GridWorld` and an agent that can move up, down, left, or right. The three numbers from step 2 are passed in as `ExplorationParams` and used inside `GridWorld.step()` so that each mode produces a different style of movement (e.g. cautious = low noise and small steps, strange = high curiosity for unseen cells).
+
+**4. The path is turned into a picture.**  
+After many steps, the code has a “visit count” for every cell. That data is turned into a heatmap image (e.g. in `train_all.py` by the function `save_heatmap()`) and saved as a PNG. The folder depends on whether the LLM was used:
+
+- **LLM off:** pictures go under `outputs/llm_off/` (scripted) or `outputs_rl/llm_off/` (RL).
+- **LLM on:** pictures go under `outputs/llm_on/` or `outputs_rl/llm_on/`.
+
+So: **you run `train_all` or `rl_train` → for each of the four modes, `params_from_prompt` (and optionally the LLM in `llm_client`) sets behavior → `GridWorld` in `env.py` runs the motion → `save_heatmap` writes a PNG into the right folder.** That’s the full workflow.
 
 ---
 
@@ -71,16 +108,14 @@ If you later enable the Nebius / Nemotron integration, `requests` is already inc
 python -m exploration.train_all
 ```
 
-This will create an `outputs/` directory with PNGs:
+This will create PNGs under `outputs/`, in a subdirectory that reflects the LLM switch:
 
-- `exploration_cautious.png`
-- `exploration_random.png`
-- `exploration_aggressive.png`
-- `exploration_strange.png`
+- **`outputs/llm_off/`** – when `USE_LLM` is unset or `0` (keyword mapping)
+- **`outputs/llm_on/`** – when `USE_LLM=1` (Nemotron-driven parameters)
 
-Each image is a heatmap of visit counts showing the exploration pattern induced by that prompt.
+Each subdir contains: `exploration_cautious.png`, `exploration_random.png`, `exploration_aggressive.png`, `exploration_strange.png`. This way runs with LLM on vs off do not overwrite each other.
 
-You can change the output directory by setting `EXPLORATION_OUTPUT_DIR=/some/path` before running.
+You can change the base directory by setting `EXPLORATION_OUTPUT_DIR=/some/path` before running.
 
 ### 3. Run the RL-based exploration for all prompt patterns
 
@@ -88,7 +123,7 @@ You can change the output directory by setting `EXPLORATION_OUTPUT_DIR=/some/pat
 python -m exploration.rl_train
 ```
 
-This will create an `outputs_rl/` directory with PNGs:
+This will create PNGs under `outputs_rl/`, in subdirs **`outputs_rl/llm_off/`** and **`outputs_rl/llm_on/`** (same `USE_LLM` logic as above), so you can compare RL patterns with and without the LLM. Each subdir contains:
 
 - `rl_exploration_cautious.png`
 - `rl_exploration_random.png`
@@ -198,12 +233,16 @@ If you have access to **Nemotron-3-Super-120b-a12b** on Nebius and a token from 
 
 The integration is intentionally minimal and environment-driven:
 
-- Set the following environment variables (e.g., on your Nebius VM or locally):
+- Set the following environment variables (e.g., in `.env` or on your Nebius VM):
 
 ```bash
+# Switch: set to 1 (or true/yes) to use the LLM; set to 0 or omit to use keyword mapping only.
+export USE_LLM=1
 export NEBIUS_LLM_ENDPOINT="https://your-nebius-endpoint.example.com/v1/chat/completions"
 export NEBIUS_TOKEN="YOUR_TOKEN_FACTORY_ISSUED_BEARER_TOKEN"
 ```
+
+To compare behavior with the LLM on vs off, run once with `USE_LLM=1` and once with `USE_LLM=0` (or unset); the former uses Nemotron to set parameters, the latter uses the built-in keyword mapping.
 
 - `exploration/llm_client.py` will:
   - Send a short system prompt describing the gridworld and the four modes:

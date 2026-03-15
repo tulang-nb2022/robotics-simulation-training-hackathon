@@ -216,8 +216,15 @@ def save_heatmap(visits: np.ndarray, out_path: Path, title: str) -> None:
     plt.close()
 
 
+def _llm_suffix() -> str:
+    """Subdir name so outputs don't overwrite when toggling USE_LLM."""
+    v = (os.environ.get("USE_LLM") or "").strip().lower()
+    return "llm_on" if v in ("1", "true", "yes") else "llm_off"
+
+
 def main() -> None:
-    output_dir = Path(os.environ.get("EXPLORATION_OUTPUT_DIR", "outputs_rl"))
+    base_dir = Path(os.environ.get("EXPLORATION_OUTPUT_DIR", "outputs_rl"))
+    output_dir = base_dir / _llm_suffix()
 
     for prompt in PROMPTS:
         visits = train_q_learning(prompt, seed=42)
