@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#
+# Lightweight pre-commit hook to catch obvious secrets / PII patterns
+# before they are committed.
+#
+# Usage:
+#   git config core.hooksPath githooks
+#
+
+set -euo pipefail
+
+RED="$(printf '\033[31m')"
+YELLOW="$(printf '\033[33m')"
+RESET="$(printf '\033[0m')"
+
+echo "[pre-commit] Running basic secrets/PII scan on staged changes..."
+
+# Get list of staged files (added or modified)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM || true)
+
+if [ -z "$STAGED_FILES" ]; then
+  echo "[pre-commit] No staged files to scan."
+  exit 0
+fi
+
+# File globs to skip (vendor, images, etc.)
+skip_file() {
+  case "$1" in
+    *.png|*.jpg|*.jpeg|*.gif|*.svg|*.ico|*.pdf|*.mp4|*.zip|*.gz|*.bz2|*.tgz)
+      return 0
+      ;;
+    .gitignore|.gitattributes|githooks/pre-commit)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+FOUND=0
+
+for file in $STAGED_FILES; do
+  if skip_file "$file"; then
+    continue
+  fi
+
+  # Only scan if file still exists in the working tree
+  if [ ! -f "$file" ]; then
+    continue
+  fi
+
+  # Get staged content (not working tree) and scan it
+  content="$(git show ":$file" || true)"
+
+  if [ -z "$content" ]; then
+    continue
+  fi
+
+  # Patterns to flag:
+  # - Common credential markers
+  # - Private key blocks
+  # - Likely emails
+  # - Simple AWS-style access keys
+  if echo "$content" | grep -E -n \
+    -e 'AWS_SECRET_ACCESS_KEY' \
+    -e 'AWS_ACCESS_KEY_ID' \
+    -e 'SECRET_KEY' \
+    -e 'API_KEY' \
+    -e 'TOKEN=' \
+    -e 'PASSWORD=' \
+    -e 'BEGIN RSA PRIVATE KEY' \
+    -e 'BEGIN OPENSSH PRIVATE KEY' \
+    -e 'BEGIN PRIVATE KEY' \
+    -e '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
+    -e 'AKIA[0-9A-Z]{16}' \
+    >/tmp/precommit-secrets-matches 2>/dev/null
+  then
+    echo
+    echo "${RED}[pre-commit] Potential secret/PII detected in staged file:${RESET} $file"
+    # Prefix each matched line with the file name in a shell-safe way
+    while IFS= read -r line; do
+      echo "  $file:$line"
+    done < /tmp/precommit-secrets-matches
+    echo
+    FOUND=1
+  fi
+done
+
+rm -f /tmp/precommit-secrets-matches || true
+
+if [ "$FOUND" -ne 0 ]; then
+  echo "${RED}[pre-commit] Commit blocked due to potential secrets/PII.${RESET}"
+  echo "${YELLOW}If this is a false positive, consider refactoring or explicitly documenting why it is safe before overriding.${RESET}"
+  exit 1
+fi
+
+echo "[pre-commit] No obvious secrets/PII found."
+exit 0
+
