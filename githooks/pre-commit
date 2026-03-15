@@ -29,7 +29,7 @@ skip_file() {
     *.png|*.jpg|*.jpeg|*.gif|*.svg|*.ico|*.pdf|*.mp4|*.zip|*.gz|*.bz2|*.tgz)
       return 0
       ;;
-    .gitignore|.gitattributes|githooks/pre-commit)
+    .gitignore|.gitattributes|githooks/pre-commit|.env.sample)
       return 0
       ;;
     *)

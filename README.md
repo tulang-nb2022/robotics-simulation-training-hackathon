@@ -47,6 +47,7 @@ Watch exploration patterns change
 - `exploration/prompt_mapping.py`: maps text prompts to exploration parameters.
 - `exploration/train_all.py`: runs the simple scripted agent for all prompt patterns and saves visualizations.
 - `exploration/rl_train.py`: runs a tabular Q-learning agent for all prompt patterns and saves RL-based visualizations.
+- `exploration/llm_client.py`: optional Nemotron / Nebius-backed LLM integration for mode-to-parameter mapping.
 - `githooks/pre-commit`: git pre-commit hook for basic secrets/PII scanning.
 - `requirements.txt`: Python dependencies.
 - `Dockerfile`: container for running training on Nebius (or any Docker-capable cloud).
@@ -61,6 +62,8 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
+
+If you later enable the Nebius / Nemotron integration, `requests` is already included in `requirements.txt`.
 
 ### 2. Run the exploration for all prompt patterns
 
@@ -187,6 +190,33 @@ To make this more sophisticated, you could:
 - Increase grid size and step count.
 - Add obstacles and goals to the grid.
 - Log trajectories and replay them as animations instead of static heatmaps.
+
+### Using Nemotron-3-Super-120b-a12b on Nebius to shape behavior
+
+If you have access to **Nemotron-3-Super-120b-a12b** on Nebius and a token from **Nebius Token Factory**, you can let the LLM decide what
+`action_noise`, `step_size`, and `curiosity_weight` should be for each mode.
+
+The integration is intentionally minimal and environment-driven:
+
+- Set the following environment variables (e.g., on your Nebius VM or locally):
+
+```bash
+export NEBIUS_LLM_ENDPOINT="https://your-nebius-endpoint.example.com/v1/chat/completions"
+export NEBIUS_TOKEN="YOUR_TOKEN_FACTORY_ISSUED_BEARER_TOKEN"
+```
+
+- `exploration/llm_client.py` will:
+  - Send a short system prompt describing the gridworld and the four modes:
+    **cautious**, **random**, **aggressive**, **strange**.
+  - Ask the model to reply with **raw JSON only**:
+    - `action_noise` (0–1),
+    - `step_size` (1, 2, or 3),
+    - `curiosity_weight` (non-negative float).
+  - Parse the JSON and return it as an `ExplorationParams` instance.
+
+- `exploration/prompt_mapping.py` calls `params_from_llm(prompt)` first; if the LLM or parsing fails, it falls back to the local keyword mapping.
+
+This means that when properly configured, Nemotron is “told” what each search mode means and directly sets the movement parameters that shape both the scripted and RL-based exploration patterns.
 
 ---
 
