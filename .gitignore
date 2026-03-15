@@ -6,6 +6,9 @@ __pycache__/
 # Folders 
 outputs/
 
+# Other
+.DS_Store
+
 # C extensions
 *.so
 

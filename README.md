@@ -69,8 +69,8 @@ The file `exploration/env.py` defines a `GridWorld` and an agent that can move u
 **4. The path is turned into a picture.**  
 After many steps, the code has a “visit count” for every cell. That data is turned into a heatmap image (e.g. in `train_all.py` by the function `save_heatmap()`) and saved as a PNG. The folder depends on whether the LLM was used:
 
-- **LLM off:** pictures go under `outputs/llm_off/` (scripted) or `outputs_rl/llm_off/` (RL).
-- **LLM on:** pictures go under `outputs/llm_on/` or `outputs_rl/llm_on/`.
+- **Scripted (`train_all`):** all PNGs go in the **`train_all/`** folder; the filename includes the LLM switch, e.g. `exploration_cautious_llm_off.png`, `exploration_cautious_llm_on.png`.
+- **RL (`rl_train`):** pictures go under `outputs_rl/llm_off/` or `outputs_rl/llm_on/`.
 
 So: **you run `train_all` or `rl_train` → for each of the four modes, `params_from_prompt` (and optionally the LLM in `llm_client`) sets behavior → `GridWorld` in `env.py` runs the motion → `save_heatmap` writes a PNG into the right folder.** That’s the full workflow.
 
@@ -106,14 +106,12 @@ If you later enable the Nebius / Nemotron integration, `requests` is already inc
 python -m exploration.train_all
 ```
 
-This will create PNGs under `outputs/`, in a subdirectory that reflects the LLM switch:
+This will create PNGs in the **`train_all/`** folder (or the path set by `EXPLORATION_OUTPUT_DIR`). Each filename includes the USE_LLM state so runs with LLM on vs off do not overwrite each other, e.g.:
 
-- **`outputs/llm_off/`** – when `USE_LLM` is unset or `0` (keyword mapping)
-- **`outputs/llm_on/`** – when `USE_LLM=1` (Nemotron-driven parameters)
+- `exploration_cautious_llm_off.png`, `exploration_random_llm_off.png`, …
+- `exploration_cautious_llm_on.png`, `exploration_random_llm_on.png`, …
 
-Each subdir contains: `exploration_cautious.png`, `exploration_random.png`, `exploration_aggressive.png`, `exploration_strange.png`. This way runs with LLM on vs off do not overwrite each other.
-
-You can change the base directory by setting `EXPLORATION_OUTPUT_DIR=/some/path` before running.
+You can change the output folder by setting `EXPLORATION_OUTPUT_DIR=/some/path` before running.
 
 ### 3. Run the RL-based exploration for all prompt patterns
 

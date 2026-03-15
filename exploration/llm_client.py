@@ -37,10 +37,13 @@ import os
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
-import os
-from openai import OpenAI
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
-import requests
+from openai import OpenAI
 
 
 @dataclass
@@ -50,35 +53,32 @@ class LLMExplorationConfig:
     curiosity_weight: float
 
 
+def _debug_llm() -> bool:
+    return (os.environ.get("DEBUG_LLM") or "").strip().lower() in ("1", "true", "yes")
+
+
 def _call_raw(system_prompt: str, user_prompt: str) -> Optional[str]:
-    endpoint = os.environ.get("NEBIUS_LLM_ENDPOINT")
-    token = os.environ.get("NEBIUS_TOKEN")
-
-
-    client = OpenAI(
-        base_url="https://api.tokenfactory.nebius.com/v1/",
-        api_key=os.environ.get("NEBIUS_API_KEY"),
-        )
-
-    if not endpoint or not token:
+    api_key = os.environ.get("NEBIUS_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        if _debug_llm() or (os.environ.get("USE_LLM") or "").strip().lower() in ("1", "true", "yes"):
+            print("[LLM] _call_raw: no api_key (set NEBIUS_API_KEY or OPENAI_API_KEY in .env)")
         return None
+
+    base_url = os.environ.get("NEBIUS_LLM_ENDPOINT", "https://api.tokenfactory.us-central1.nebius.com/v1/")
+    client = OpenAI(base_url=base_url, api_key=api_key)
 
     try:
         completion = client.chat.completions.create(
-            model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+            model=os.environ.get("NEBIUS_LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b"),
             messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt
-                    }
-                ],
-                temperature=0.6
-            )
-    except Exception:
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.6,
+        )
+    except Exception as e:
+        if _debug_llm() or (os.environ.get("USE_LLM") or "").strip().lower() in ("1", "true", "yes"):
+            print(f"[LLM] _call_raw: API call failed: {e}")
         return None
 
     return completion.choices[0].message.content
@@ -110,15 +110,21 @@ def params_from_llm(prompt: str) -> Optional[LLMExplorationConfig]:
 
     content = _call_raw(system_prompt, user_prompt)
     if content is None:
+        if _debug_llm() or (os.environ.get("USE_LLM") or "").strip().lower() in ("1", "true", "yes"):
+            print("[LLM] params_from_llm: _call_raw returned None (see messages above for cause)")
         return None
 
     try:
         parsed = json.loads(content)
-        return LLMExplorationConfig(
-            action_noise=float(parsed["action_noise"]),
-            step_size=int(parsed["step_size"]),
-            curiosity_weight=float(parsed["curiosity_weight"]),
-        )
-    except Exception:
+    except Exception as e:
+        if _debug_llm() or (os.environ.get("USE_LLM") or "").strip().lower() in ("1", "true", "yes"):
+            print(f"[LLM] params_from_llm: JSON parse failed: {e!r}", "raw:", (content[:200] if content else "") + ("..." if len(content or "") > 200 else ""))
         return None
+    if _debug_llm():
+        print("[LLM] params_from_llm:", repr(user_prompt), "->", parsed)
+    return LLMExplorationConfig(
+        action_noise=float(parsed["action_noise"]),
+        step_size=int(parsed["step_size"]),
+        curiosity_weight=float(parsed["curiosity_weight"]),
+    )
 

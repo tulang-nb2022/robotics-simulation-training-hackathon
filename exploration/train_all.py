@@ -40,7 +40,7 @@ def save_heatmap(visits: np.ndarray, out_path: Path, title: str) -> None:
 
 
 def _llm_suffix() -> str:
-    """Subdir name so outputs don't overwrite when toggling USE_LLM."""
+    """Filename suffix so outputs don't overwrite when toggling USE_LLM."""
     v = (os.environ.get("USE_LLM") or "").strip().lower()
     return "llm_on" if v in ("1", "true", "yes") else "llm_off"
 
@@ -49,13 +49,14 @@ def main() -> None:
     pygame.display.init()
     pygame.display.set_mode((1, 1))  # headless-friendly setup
 
-    base_dir = Path(os.environ.get("EXPLORATION_OUTPUT_DIR", "outputs"))
-    output_dir = base_dir / _llm_suffix()
+    output_dir = Path(os.environ.get("EXPLORATION_OUTPUT_DIR", "outputs"))
+    output_dir = output_dir / "train_all"
+    llm_suffix = _llm_suffix()
 
     for prompt in PROMPTS:
         visits = run_episode(prompt, steps=800, seed=42)
-        out_file = output_dir / f"exploration_{prompt}.png"
-        save_heatmap(visits, out_file, title=f"Exploration pattern: {prompt}")
+        out_file = output_dir / f"exploration_{prompt}_{llm_suffix}.png"
+        save_heatmap(visits, out_file, title=f"Exploration pattern: {prompt} ({llm_suffix})")
         print(f"Saved {out_file}")
 
     pygame.quit()
